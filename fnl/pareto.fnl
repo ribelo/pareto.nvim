@@ -1,6 +1,7 @@
 (local api vim.api)
 
 (local ts-utils (require :nvim-treesitter.ts_utils))
+(local ts-query (require :vim.treesitter.query))
 
 (fn replace-termcodes [s]
   (api.nvim_replace_termcodes s true true true))
@@ -45,11 +46,10 @@
   (api.nvim_get_mode))
 
 (fn get-char-at [buf-id row col]
-  (let [lines (get-buf-lines (or buf-id 0))]
-    (string.sub (. lines row) col col)))
+  (. (get-buf-text (or buf-id 0) row col row (+ col 1)) 1))
 
 (fn get-char-at-cursor []
-  (get-char-at 0 (get-cursor)))
+  (get-char-at 0 (get-cursor-range)))
 
 (fn get-left-char []
   (let [(row col) (get-cursor-range)]
@@ -80,10 +80,10 @@
   (= y (. parens-map x)))
 
 (fn opening-paren? [x]  
-  (vim.tbl_contains ["(" "{" "["] x))
+  (vim.tbl_contains ["(" "{" "[" "<"] x))
 
 (fn closing-paren? [x]  
-  (vim.tbl_contains [")" "}" "]"] x))
+  (vim.tbl_contains [")" "}" "]" ">"] x))
 
 (fn set-text [buf start-row start-col end-row end-col xs]
   (let [buf (or buf (api.nvim_get_current_buf))] 
@@ -123,10 +123,9 @@
       (if (< (+ row 1) lines-count)
         (set-text (or buf 0) row (+ col 1) (+ row 1) 0 [])))))
 
-
 (fn node-text [node]
   (let [node (or node (ts-utils.get_node_at_cursor))]
-    (ts-utils.get_node_text node)))
+    (ts-query.get_node_text node 0)))
 
 (local fennel (require :fennel))
 
@@ -134,16 +133,16 @@
   (let [buf (api.nvim_get_current_buf)]
     (if (opening-paren? (get-right-char))
       (let [node (ts-utils.get_node_at_cursor)
-            node-text (ts-utils.get_node_text node)
+            node-text (ts-query.get_node_text node buf)
             (start-row start-col end-row end-col) (-> (ts-utils.get_node_at_cursor) (ts-utils.get_node_range))] 
         (set-text buf end-row end-col end-row end-col node-text))
       (closing-paren? (get-left-char))
       (let [_ (move-cursor-by 0 -1)
             (row col) (get-cursor-range)
             node (-> (ts-utils.get_node_at_cursor))
-            node-text (ts-utils.get_node_text node)
+            node-text (ts-query.get_node_text node buf)
             (start-row start-col end-row end-col) (-> (ts-utils.get_node_at_cursor) (ts-utils.get_node_range))] 
-        (set-text buf end-row end-col end-row end-col node-text)
+        (set-text buf end-row end-col end-row end-col [node-text])
         (set-cursor (+ row 1) (+ col 2)))
       (insert-text-at-cursor buf [fallback]))))
 
@@ -192,36 +191,100 @@
   (let [buf (api.nvim_get_current_buf)
         (row col) (get-cursor 0)]
     (if (opening-paren? (get-right-char))
-      (let [(x y) (find-next-char buf row (+ col 2) ["(" "[" "{"] [")" "]" "}"])]
-        (if (and x y) 
-          (set-cursor x (- y 1))))
+      (let [(x y) (find-next-char buf (- row 1) (+ col 2) ["(" "[" "{"] [")" "]" "}"])]
+        (when (and x y) 
+          (set-cursor (+ x 1) y)))
       (closing-paren? (get-left-char))
       (let [(x y) (find-prev-char buf row (- col 1) [")" "]" "}"] ["(" "[" "{"])] ; }])
-      (print :x x :y y)                                                                             
       (if (and x y) 
-        (set-cursor x y)))
+        (set-cursor (+ x 1) y)))
     (insert-text-at-cursor buf [fallback]))))
 
 (fn delete [fallback]
   (let [buf (api.nvim_get_current_buf)
-        (row col) (get-cursor 0)]
-    (if (opening-paren? (get-right-char))
+        (row col) (get-cursor 0)
+        char (get-right-char)]
+    (if (or (opening-paren? char)
+            (= "\"" char)
+            (= "\'" char))
       (let [node (ts-utils.get_node_at_cursor)
-            node-text (ts-utils.get_node_text node)
-            (start-row start-col end-row end-col) (-> (ts-utils.get_node_at_cursor) (ts-utils.get_node_range))] 
+            node-text (ts-query.get_node_text node buf)
+            (start-row start-col end-row end-col) (-> node (ts-utils.get_node_range))] 
         (set-text buf start-row start-col end-row end-col []))  
       (delete-text-after-cursor buf))))
+
+(fn mark-block [sr sc er ec goto]
+  (match goto 
+    (where (or :end nil)) 
+    (do (set-cursor sr sc)
+        (vim.cmd (.. "normal! " (replace-termcodes "v")))
+        (set-cursor er ec)
+        true)
+    :start
+    (do (set-cursor er ec) 
+        (vim.cmd (.. "normal! " (replace-termcodes "v")))
+        (set-cursor sr sc)
+        true)
+    _ false))
 
 (fn mark [fallback]
   (let [buf (api.nvim_get_current_buf)
         (row col) (get-cursor 0)]
     (if (opening-paren? (get-right-char))
       (let [node (ts-utils.get_node_at_cursor)
-            (start-row start-col end-row end-col) (-> (ts-utils.get_node_at_cursor) (ts-utils.get_node_range))] 
-        (set-cursor start-row (+ start-col 1))
-        (vim.cmd (.. "normal! " (replace-termcodes "v")))
-        (set-cursor (+ end-row 1) end-col))
-        (insert-text-at-cursor buf [fallback]))))
+            (start-row start-col end-row end-col) (-> node (ts-utils.get_node_range))] 
+        (mark-block (+ start-row 1) start-col (+ end-row 1) end-col :end)
+        (feedkeys (replace-termcodes "<esc>")))
+
+      (closing-paren? (get-left-char))
+      (let [_ (move-cursor-by 0 -1)
+            node (ts-utils.get_node_at_cursor)
+            (start-row start-col end-row end-col) (-> node (ts-utils.get_node_range))] 
+        (mark-block (+ start-row 1) (+ start-col 1) (+ end-row 1) (- end-col 1) :start)
+        (feedkeys (replace-termcodes "<esc>")))
+
+      (insert-text-at-cursor buf [fallback]))))
+
+(fn comment-node [fallback]
+  (let [buf (api.nvim_get_current_buf)
+        (row col) (get-cursor 0)]
+    (if (opening-paren? (get-right-char))
+      (let [node (ts-utils.get_node_at_cursor)
+            (start-row start-col end-row end-col) (-> node (ts-utils.get_node_range))
+            last-char (get-char-at buf end-row end-col)] 
+        (when (closing-paren? last-char)
+          (set-text buf end-row end-col end-row end-col ["" (string.rep " " start-col)]))
+        (for [i start-row end-row]
+          (let [line-length (get-line-length buf i)
+                n (math.max 0 (- start-col line-length))
+                begin (if (> start-col line-length) 0 start-col)]
+            (set-text buf i begin i begin [(.. (string.rep " " n) ";; ")]))))
+
+      (insert-text-at-cursor buf [fallback]))))
+
+;; TODO: split node-text to lines
+(fn raise [fallback]
+  (let [buf (api.nvim_get_current_buf) 
+        mode (. (api.nvim_get_mode) :mode)] 
+    (if (or (= :n mode)
+            (and (= :i mode)
+                 (opening-paren? (get-right-char))))
+      (let [buf (api.nvim_get_current_buf)
+            (row col) (get-cursor 0)
+            node (ts-utils.get_node_at_cursor)
+            (nsr nsc ner nec) (-> node (ts-utils.get_node_range))
+            node-text (ts-query.get_node_text node buf)
+            lines (vim.split node-text "\n")
+            parent (node:parent)
+            (psr psc per pec) (-> parent (ts-utils.get_node_range))]
+        ;; TODO: add to register
+        (set-text buf psr psc per pec [""])
+        (set-text buf psr psc psr psc lines)
+        ;; (0 1) indexed
+        (set-cursor (+ psr 1) psc))
+      (when (and (= :i mode) fallback)
+        (insert-text-at-cursor buf [fallback])))))
+
 
 (fn wrap-with [fallback begin end]
   (let [buf (api.nvim_get_current_buf)
@@ -231,7 +294,7 @@
     (while (< i 3)
       (if (not (= " " (get-right-char)))
         (let [node (ts-utils.get_node_at_cursor)
-              node-text (ts-utils.get_node_text node)
+              node-text (ts-query.get_node_text node buf)
               (start-row start-col end-row end-col) (-> (ts-utils.get_node_at_cursor) (ts-utils.get_node_range))]
           (set-text buf start-row start-col start-row start-col [begin])
           (if (= start-row end-row) 
@@ -260,5 +323,8 @@
  : find-next-char
  : step-inside
  : delete
+ : backspace
  : mark
+ :comment comment-node
+ : raise
  : wrap-with}
