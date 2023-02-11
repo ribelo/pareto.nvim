@@ -1,6 +1,3 @@
-local ts_utils = require("nvim-tressitter.ts_utils")
-local ts_query = require("vim.treesitter.query")
-
 local M = {}
 
 local opening_parens = {
