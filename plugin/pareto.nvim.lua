@@ -1,0 +1,1 @@
+require("pareto.nvim")
