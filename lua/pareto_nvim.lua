@@ -127,4 +127,73 @@ M.wrap_current_node = function(char)
 	end
 end
 
+-- raise current treesitter node and replace parent node
+M.splice_node = function()
+	local cur = vim.api.nvim_win_get_cursor(0)
+	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	if node then
+		local parent = node:parent()
+		if parent then
+			local parent_start_row, parent_start_col, parent_end_row, parent_end_col = parent:range()
+			---@diagnostic disable-next-line: param-type-mismatch
+			local node_text = vim.treesitter.query.get_node_text(node, 0, {})
+			---@diagnostic disable-next-line: param-type-mismatch
+			local node_text_list = vim.split(node_text, "\n", {})
+			vim.api.nvim_buf_set_text(
+				0,
+				parent_start_row,
+				parent_start_col,
+				parent_end_row,
+				parent_end_col,
+				node_text_list
+			)
+			vim.api.nvim_win_set_cursor(0, { parent_start_row + 1, parent_start_col })
+		end
+	end
+end
+
+-- insert cursor at the begingng of parent sexp node
+M.jump_parent_begin = function()
+	local cur = vim.api.nvim_win_get_cursor(0)
+	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	while node do
+		local parent = node:parent()
+		if parent then
+			local start_row, start_col, _, _ = parent:range()
+			-- check if node starts with opening paren
+			local char = vim.fn.getline(start_row + 1):sub(start_col + 1, start_col + 1)
+			if opening_parens[char] then
+				vim.api.nvim_win_set_cursor(0, { start_row + 1, start_col + 1 })
+				vim.cmd(":startinsert")
+				return
+			end
+		end
+		node = parent
+	end
+end
+
+-- insert cursor at the end of parent sexp node
+M.jump_parent_end = function()
+	local cur = vim.api.nvim_win_get_cursor(0)
+	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	while node do
+		local parent = node:parent()
+		if parent then
+			local _, _, end_row, end_col = parent:range()
+			-- check if node starts with opening paren
+			local char = vim.fn.getline(end_row + 1):sub(end_col - 1, end_col - 1)
+			if closing_parens[char] then
+				vim.api.nvim_win_set_cursor(0, { end_row + 1, end_col - 1 })
+				vim.cmd(":startinsert")
+				return
+			end
+		end
+		node = parent
+	end
+end
+
+vim.keymap.set("n", "<F7>", function()
+	M.jump_parent()
+end, {})
+
 return M
