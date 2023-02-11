@@ -85,19 +85,26 @@ M.wrap_node = function(char)
 	if node then
 		---@diagnostic disable-next-line: param-type-mismatch
 		local node_text = vim.treesitter.query.get_node_text(node, 0, {})
+		---@diagnostic disable-next-line: param-type-mismatch
+		node_text = vim.split(node_text, "\n", {})
 		---@diagnostic disable-next-line: no-unknown
 		local start_row, start_col, end_row, end_col = node:range()
 		---@diagnostic disable-next-line: no-unknown
-		local begin_char, end_char, text
+		local begin_char, end_char
 		if opening_parens[char] ~= nil then
 			begin_char = char
 			--- @type string
 			end_char = parens_map[char]
-			text = table.concat({ begin_char, " ", node_text, " ", end_char })
+			node_text[1] = begin_char .. node_text[1]
+			node_text[#node_text] = node_text[#node_text] .. end_char
 		end
-		vim.api.nvim_buf_set_text(0, start_row, start_col, end_row, end_col, { text })
+		vim.api.nvim_buf_set_text(0, start_row, start_col, end_row, end_col, node_text)
 		vim.api.nvim_win_set_cursor(0, { start_row + 1, start_col + 1 })
 	end
 end
+
+vim.keymap.set("n", "<F7>", function()
+	M.wrap_node("(")
+end)
 
 return M
