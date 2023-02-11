@@ -192,8 +192,8 @@ M.jump_parent_end = function()
 	end
 end
 
-vim.keymap.set("n", "<F7>", function()
-	M.jump_parent()
-end, {})
+-- vim.keymap.set("n", "<F7>", function()
+-- 	M.jump_parent_end()
+-- end, {})
 
 return M
