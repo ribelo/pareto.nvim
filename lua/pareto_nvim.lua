@@ -151,7 +151,7 @@ M.forward_sexp = function()
 end
 
 -- wrap treesitter node with char
----@ char string
+---@param char string
 ---@param node? any
 M.wrap_node = function(char, node)
 	local cur = vim.api.nvim_win_get_cursor(0)
