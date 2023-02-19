@@ -216,18 +216,16 @@ M.wrap_current_node = function(char)
 	end
 end
 
--- raise current treesitter node and replace parent node
-M.raise_node = function()
+-- splice current treesitter node
+M.splice_node = function()
 	local cur = vim.api.nvim_win_get_cursor(0)
 	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
-	vim.pretty_print("begin")
 	while node do
 		local node_row_start, node_col_start, _ = node:start()
 		local node_row_end, node_col_end, _ = node:end_()
 		local char_start =
 			vim.api.nvim_buf_get_text(0, node_row_start, node_col_start, node_row_start, node_col_start + 1, {})[1]
 		local char_end = vim.api.nvim_buf_get_text(0, node_row_end, node_col_end - 1, node_row_end, node_col_end, {})[1]
-		vim.pretty_print("start", char_start, "end", char_end)
 		if opening_parens[char_start] and closing_parens[char_end] then
 			vim.api.nvim_buf_set_text(0, node_row_start, node_col_start, node_row_start, node_col_start + 1, { "" })
 			vim.api.nvim_buf_set_text(0, node_row_end, node_col_end - 2, node_row_end, node_col_end - 1, { "" })
@@ -243,14 +241,79 @@ M.raise_node = function()
 	end
 end
 
--- splice current treesitter node
-M.splice_node = function()
+-- raise current treesitter node and replace parent node
+M.raise_node = function()
 	local cur = vim.api.nvim_win_get_cursor(0)
 	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
-	if node then
+	while node do
+		local node_row_start, node_col_start, _ = node:start()
+		local node_row_end, node_col_end, _ = node:end_()
+		local node_rows = node_row_end - node_row_start
+		local node_text = vim.api.nvim_buf_get_text(0, node_row_start, node_col_start, node_row_end, node_col_end, {})
+		local cur_shift = cur[2] - node_col_start
 		local parent = node:parent()
 		if parent then
-			local parent_start_row, parent_start_col, parent_end_row, parent_end_col = parent:range()
+			local parent_row_start, parent_col_start, _ = parent:start()
+			local parent_row_end, parent_col_end, _ = parent:end_()
+			local parent_text =
+				vim.api.nvim_buf_get_text(0, parent_row_start, parent_col_start, parent_row_end, parent_col_end, {})
+			local node_row_shift = node_row_start - parent_row_start
+			local node_col_shift = node_col_start - parent_col_start
+			if
+				node_row_start ~= parent_row_start
+				or node_col_start ~= parent_col_start
+				or node_row_end ~= parent_row_end
+				or node_col_end ~= parent_col_end
+			then
+				vim.api.nvim_buf_set_text(
+					0,
+					parent_row_start,
+					parent_col_start,
+					parent_row_end,
+					parent_col_end,
+					node_text
+				)
+				vim.api.nvim_win_set_cursor(0, { parent_row_start + 1, parent_col_start + cur_shift })
+				local ns_id = vim.api.nvim_create_namespace("pareto_raise")
+				vim.api.nvim_buf_add_highlight(
+					0,
+					ns_id,
+					M.default.hl,
+					node_row_start - node_row_shift,
+					node_col_start - node_col_shift,
+					node_col_end - node_col_shift
+				)
+				local lines = vim.api.nvim_buf_get_lines(
+					0,
+					node_row_start - node_row_shift,
+					node_row_end + 1 - node_row_shift,
+					true
+				)
+				for i, line in ipairs(lines) do
+					if i > 1 then
+						local empty = string.match(line, "^%s*")
+						vim.api.nvim_buf_add_highlight(
+							0,
+							ns_id,
+							M.default.hl,
+							node_row_start + i - 1 - node_row_shift,
+							#empty,
+							#line
+						)
+					end
+				end
+				vim.defer_fn(function()
+					vim.api.nvim_buf_clear_namespace(
+						0,
+						ns_id,
+						node_row_start - node_row_shift,
+						node_row_end - node_row_shift + 1
+					)
+				end, 250)
+				return
+			else
+				node = parent
+			end
 		end
 	end
 end
@@ -474,11 +537,11 @@ M.backward_barf = function()
 	end
 end
 
--- vim.keymap.set({ "n", "i" }, "<F7>", function()
--- 	M.raise_node()
--- end, {})
--- vim.keymap.set({ "n", "i" }, "<F8>", function()
--- 	M.backward_barf()
--- end, {})
+vim.keymap.set({ "n", "i" }, "<F7>", function()
+	M.raise_node()
+end, {})
+vim.keymap.set({ "n", "i" }, "<F8>", function()
+	M.splice_node()
+end, {})
 
 return M
