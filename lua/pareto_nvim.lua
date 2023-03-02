@@ -30,10 +30,10 @@ parens_map = vim.tbl_extend("force", parens_map, opening_parens, closing_parens)
 
 ---Backward Node
 function M.backward_node()
-	local cur = vim.api.nvim_win_get_cursor(0)
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
 
 	-- Get the node at the current position
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 
 	-- Iterate over the parent nodes of the current node
 	while node do
@@ -42,7 +42,7 @@ function M.backward_node()
 
 		-- If the current position is not the same as the node start
 		-- set the cursor to the node start position and return
-		if cur[1] ~= row + 1 or cur[2] ~= col then
+		if cur_row ~= row + 1 or cur_col ~= col then
 			vim.api.nvim_win_set_cursor(0, { row + 1, col })
 			return
 		end
@@ -55,9 +55,9 @@ function M.backward_node()
 		-- If the current position is not the same as the node start
 		-- set the cursor to the node start position and return
 		if sibling then
-			row, col, _ = sibling:start()
-			if cur[1] ~= row + 1 or cur[2] ~= col then
-				vim.api.nvim_win_set_cursor(0, { row + 1, col })
+			local sib_row, sib_col, _ = sibling:start()
+			if cur_row ~= sib_row + 1 or cur_col ~= sib_col then
+				vim.api.nvim_win_set_cursor(0, { sib_row + 1, sib_col })
 				return
 			end
 		end
@@ -71,15 +71,15 @@ end
 -- go forward node
 M.forward_node = function()
 	-- Get current cursor position
-	local cur = vim.api.nvim_win_get_cursor(0)
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
 	local node, shift
 
 	-- Set node and shift depending on mode
 	if vim.api.nvim_get_mode().mode == "n" then
-		node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+		node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 		shift = 1
 	elseif vim.api.nvim_get_mode().mode == "i" then
-		node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2] - 1, {})
+		node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col - 1 } })
 		shift = 0
 	end
 
@@ -89,7 +89,7 @@ M.forward_node = function()
 		local row, col, _ = node:end_()
 
 		-- Check if not at the same position
-		if cur[1] ~= row + 1 or cur[2] ~= col - shift then
+		if cur_row ~= row + 1 or cur_col ~= col - shift then
 			-- Move cursor if position is valid
 			if col - shift > 0 then
 				vim.api.nvim_win_set_cursor(0, { row + 1, col - shift })
@@ -106,7 +106,7 @@ M.forward_node = function()
 			row, col, _ = sibling:end_()
 
 			-- Check if not at the same position
-			if cur[1] ~= row + 1 or cur[2] ~= col - shift then
+			if cur_row ~= row + 1 or cur_col ~= col - shift then
 				-- Move cursor if position is valid
 				if col - shift > 0 then
 					vim.api.nvim_win_set_cursor(0, { row + 1, col - shift })
@@ -124,10 +124,10 @@ end
 
 M.backward_sexp = function()
 	-- Get the current cursor position
-	local cur = vim.api.nvim_win_get_cursor(0)
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
 
 	-- Get the node at the current cursor position
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 
 	-- Keep looping until a node is found or it reaches the root node
 	while node do
@@ -136,7 +136,7 @@ M.backward_sexp = function()
 		local row, col, _ = node:start()
 
 		-- If the current cursor position is not equal to the start position of the node
-		if cur[1] ~= row + 1 or cur[2] ~= col then
+		if cur_row ~= row + 1 or cur_col ~= col then
 			-- Get the character at the end of the node position
 			local char = vim.api.nvim_buf_get_text(0, row, col, row, col + 1, {})
 
@@ -157,7 +157,7 @@ M.backward_sexp = function()
 			row, col, _ = sibling:start()
 
 			-- If the current cursor position is not equal to the start position of the sibling
-			if cur[1] ~= row + 1 or cur[2] ~= col then
+			if cur_row ~= row + 1 or cur_col ~= col then
 				-- Get the character at the end of the sibling position
 				local char = vim.api.nvim_buf_get_text(0, row, col, row, col + 1, {})
 
@@ -177,22 +177,22 @@ end
 
 -- Go forward sexp based on treesitter node
 M.forward_sexp = function()
-	local cur = vim.api.nvim_win_get_cursor(0)
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
 	local node, shift
 
 	-- Determine the current node and shift values based on the mode
 	if vim.api.nvim_get_mode().mode == "n" then
-		node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+		node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 		shift = 1
 	elseif vim.api.nvim_get_mode().mode == "i" then
-		node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2] - 1, {})
+		node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col - 1 } })
 		shift = 0
 	end
 
 	-- Iteratively traverse up the tree and check each node
 	while node do
 		local row, col, _ = node:end_()
-		if cur[1] ~= row + 1 or cur[2] ~= col - shift then
+		if cur_row ~= row + 1 or cur_col ~= col - shift then
 			local char = vim.api.nvim_buf_get_text(0, row, col - 1, row, col, {})
 			if closing_parens[char[1]] ~= nil then
 				vim.api.nvim_win_set_cursor(0, { row + 1, col - shift })
@@ -204,7 +204,7 @@ M.forward_sexp = function()
 		local sibling = node:next_sibling()
 		if sibling then
 			row, col, _ = sibling:end_()
-			if cur[1] ~= row + 1 or cur[2] ~= col - shift then
+			if cur_row ~= row + 1 or cur_col ~= col - shift then
 				local char = vim.api.nvim_buf_get_text(0, row, col - 1, row, col, {})
 				if closing_parens[char[1]] ~= nil then
 					if col - 1 > 0 then
@@ -224,11 +224,11 @@ end
 ---@param char string
 ---@param node? any
 M.wrap_node = function(char, node)
-	local cur = vim.api.nvim_win_get_cursor(0)
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
 
 	-- If no node is given, get the node at the given cursor position
 	if node == nil then
-		node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+		node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 	end
 
 	if node then
@@ -276,8 +276,8 @@ end
 -- wrap treesitter parent node with cahr
 ---@param char string
 M.wrap_parent_node = function(char)
-	local cur = vim.api.nvim_win_get_cursor(0)
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 	if node then
 		---@diagnostic disable-next-line: undefined-field
 		node = node:parent()
@@ -288,8 +288,8 @@ end
 -- wrap treesitter node with char
 ---@param char string
 M.wrap_current_node = function(char)
-	local cur = vim.api.nvim_win_get_cursor(0)
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 	if node then
 		---@diagnostic disable-next-line: undefined-field
 		local parent = node:parent()
@@ -302,10 +302,10 @@ end
 -- Splice current treesitter node
 M.splice_node = function()
 	-- Get current cursor position
-	local cur = vim.api.nvim_win_get_cursor(0)
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
 
 	-- Get node at current position
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 
 	-- Iterate up the parent nodes to find an opening and closing parens
 	while node do
@@ -349,9 +349,9 @@ end
 -- Raise current treesitter node and replace parent node
 M.raise_node = function()
 	-- Get the current cursor position
-	local cur = vim.api.nvim_win_get_cursor(0)
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
 	-- Get the current node under the cursor
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 	-- Iterate up through parent nodes until there are none left
 	while node do
 		-- Get the start and end positions of the node
@@ -362,7 +362,7 @@ M.raise_node = function()
 		-- Get the text of the node
 		local node_text = vim.api.nvim_buf_get_text(0, node_row_start, node_col_start, node_row_end, node_col_end, {})
 		-- Get the cursor shift relative to the node start position
-		local cur_shift = cur[2] - node_col_start
+		local cur_shift = cur_col - node_col_start
 		-- Get the parent node
 		---@diagnostic disable-next-line: undefined-field
 		local parent = node:parent()
@@ -444,8 +444,8 @@ end
 
 -- Insert cursor at the beginning of parent sexp node
 M.jump_parent_begin = function()
-	local cur = vim.api.nvim_win_get_cursor(0)
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 
 	-- Iterate up the tree to find the parent with an opening parens
 	while node do
@@ -468,8 +468,8 @@ M.jump_parent_begin = function()
 end
 
 M.jump_parent_end = function()
-	local cur = vim.api.nvim_win_get_cursor(0)
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 
 	while node do
 		---@diagnostic disable-next-line: undefined-field
@@ -497,7 +497,7 @@ M.uncomment_node = function()
 	vim.pretty_print("start 3")
 
 	-- Get the cursor position
-	local cur = vim.api.nvim_win_get_cursor(0)
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
 
 	-- Get the comment string
 	local commentstring = vim.api.nvim_buf_get_option(0, "commentstring"):gsub("%s", "")
@@ -513,26 +513,26 @@ M.uncomment_node = function()
 	-- Iterate over the lines above and below the cursor
 	for i = -1, #lines do
 		if i >= 0 then
-			local line = lines[cur[1] - 1 - i]
+			local line = lines[cur_row - 1 - i]
 			vim.pretty_print("line before", line)
 
 			-- If the line contains a comment, replace it with a space
-			if is_comment(line, cur[2] + 1) then
+			if is_comment(line, cur_col + 1) then
 				---@diagnostic disable-next-line: undefined-field
 				local new_line = line:gsub(commentstring, " ")
-				vim.api.nvim_buf_set_lines(0, cur[1] - 2 - i, cur[1] - 1 - i, false, { new_line })
+				vim.api.nvim_buf_set_lines(0, cur_row - 2 - i, cur_row - 1 - i, false, { new_line })
 			end
 		end
 
 		if i <= #lines then
-			local line = lines[cur[1] + i]
+			local line = lines[cur_row + i]
 			vim.pretty_print("line after", line)
 
 			-- If the line contains a comment, replace it with a space
-			if is_comment(line, cur[2] + 1) then
+			if is_comment(line, cur_col + 1) then
 				---@diagnostic disable-next-line: undefined-field
 				local new_line = line:gsub(commentstring, " ")
-				vim.api.nvim_buf_set_lines(0, cur[1] - 1 + i, cur[1] + i, false, { new_line })
+				vim.api.nvim_buf_set_lines(0, cur_row - 1 + i, cur_row + i, false, { new_line })
 			end
 		end
 	end
@@ -540,8 +540,8 @@ end
 
 ---Comment every line of node, place the comment in column where the node starts
 M.comment_node = function()
-	local cur = vim.api.nvim_win_get_cursor(0)
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 	local commentstring = vim.api.nvim_buf_get_option(0, "commentstring")
 	if node and commentstring then
 		---@diagnostic disable-next-line: undefined-field
@@ -581,8 +581,8 @@ end
 
 -- Forward slurp node
 function M.forward_slurp()
-	local cur = vim.api.nvim_win_get_cursor(0)
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2] - 1, {})
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col - 1 } })
 
 	-- Traverse up the tree until the node end is preceded by a closing paren
 	while node do
@@ -617,9 +617,9 @@ end
 -- Move the opening parenthesis of the current node one character to the left
 M.backward_slurp = function()
 	-- Get the current cursor position
-	local cur = vim.api.nvim_win_get_cursor(0)
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
 	-- Get the current node
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2] - 1, {})
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col - 1 } })
 
 	-- Iterate up the tree until we reach the top node
 	while node do
@@ -663,9 +663,9 @@ end
 
 ---Forward barf
 M.forward_barf = function()
-	local cur = vim.api.nvim_win_get_cursor(0)
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
 	-- Get the node at the cursor position
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 
 	-- Iterate up the tree until we find a node with a closing parens
 	while node do
@@ -698,10 +698,10 @@ end
 
 ---Backward barf
 M.backward_barf = function()
-	local cur = vim.api.nvim_win_get_cursor(0)
+	local cur_row, cur_col = unpack(vim.api.nvim_win_get_cursor(0))
 
 	-- Get the node at the cursor position
-	local node = vim.treesitter.get_node_at_pos(0, cur[1] - 1, cur[2], {})
+	local node = vim.treesitter.get_node({ buffer = 0, pos = { cur_row - 1, cur_col } })
 
 	-- Iterate up through parent nodes until a node with an opening parens is found
 	while node do
