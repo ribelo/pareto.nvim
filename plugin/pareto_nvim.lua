@@ -1,1 +1,1 @@
-require("pareto_nvim/core.lua")
+require("pareto_nvim")
